@@ -1,3 +1,4 @@
+use bevy::asset::LoadState;
 use bevy::math::{vec2, vec3};
 use bevy::sprite::collide_aabb::Collision;
 use bevy::sprite::collide_aabb::collide;
@@ -94,11 +95,17 @@ struct Scoreboard {
     score: usize,
 }
 
+#[derive(Resource, Default, Deref, DerefMut)]
+struct CollisionSound(Handle<AudioSource>);
+
 fn setup(mut commands: Commands, asset_server: Res<AssetServer>) {
     // camera
     commands.spawn(Camera2dBundle::default());
 
     let ball_tex = asset_server.load("textures/circle.png");
+
+    let ball_collision_sound = asset_server.load("sounds/breakout_collision.ogg");
+    commands.insert_resource(CollisionSound(ball_collision_sound));
 
     // Paddle
     commands.spawn((
@@ -324,8 +331,10 @@ fn apply_velocity(mut query: Query<(&mut Transform, &Velocity)>, time_step: Res<
 fn check_ball_collision(
     mut commands: Commands,
     mut score: ResMut<Scoreboard>,
+    collision_sound: Res<CollisionSound>,
     mut ball_query: Query<(&mut Velocity, &Transform, &Ball)>,
     collider_query: Query<(Entity, &Transform, &Collider, Option<&Brick>)>,
+    asset_server: Res<AssetServer>, // add this
 ) {
     for (mut ball_velocity, ball_transform, ball) in &mut ball_query {
         for (other_entity, transform, other, opt_brick) in &collider_query {
@@ -361,6 +370,22 @@ fn check_ball_collision(
                     println!("Score {}", score.score);
 
                     commands.entity(other_entity).despawn();
+                }
+
+                // Only play if the audio asset is actually loaded and valid
+                match asset_server.get_load_state(collision_sound.id()) {
+                    LoadState::Loaded => {
+                        commands.spawn(AudioBundle {
+                            source: collision_sound.clone(),
+                            settings: PlaybackSettings::DESPAWN,
+                        });
+                    }
+                    LoadState::Failed => {
+                        println!("Audio load failed: sounds/hit_sound.ogg. Use WAV or OGG Vorbis.");
+                    }
+                    _ => {
+                        // Not loaded yet; skip playing this frame
+                    }
                 }
             }
         }

@@ -1,4 +1,6 @@
 use bevy::math::{vec2, vec3};
+use bevy::sprite::collide_aabb::Collision;
+use bevy::sprite::collide_aabb::collide;
 use bevy::{prelude::*, time};
 
 // PADDLE
@@ -32,7 +34,14 @@ fn main() {
         .insert_resource(ClearColor(Color::rgb(0.9, 0.9, 0.9)))
         .add_systems(Update, bevy::window::close_on_esc)
         .add_systems(Startup, setup)
-        .add_systems(FixedUpdate, (move_paddle, apply_velocity))
+        .add_systems(
+            FixedUpdate,
+            (
+                move_paddle,
+                apply_velocity,
+                check_ball_collision.after(apply_velocity),
+            ),
+        )
         .run();
 }
 
@@ -42,7 +51,9 @@ struct Paddle;
 
 // This is a Tag component. -> BALL
 #[derive(Component)]
-struct Ball;
+struct Ball {
+    size: Vec2,
+}
 
 #[derive(Component, Deref, DerefMut)]
 struct Velocity(Vec2);
@@ -81,6 +92,7 @@ fn setup(mut commands: Commands, asset_server: Res<AssetServer>) {
             ..Default::default()
         },
         Paddle,
+        Collider { size: PADDLE_SIZE },
     ));
 
     // Ball
@@ -98,7 +110,7 @@ fn setup(mut commands: Commands, asset_server: Res<AssetServer>) {
             texture: ball_tex,
             ..Default::default()
         },
-        Ball,
+        Ball { size: BALL_SIZE },
         Velocity(BALL_SPEED * BALL_INITIAL_DIRECTION),
     ));
 
@@ -200,8 +212,13 @@ fn move_paddle(
         direction += 1.0;
     }
 
-    let new_x =
+    let mut new_x =
         paddle_transform.translation.x + direction * PADDLE_SPEED * time_step.period.as_secs_f32();
+
+    // IMPORTNAT Do not let paddle go over the walls
+    new_x = new_x.min(RIGHT_WALL - (WALL_THICKNESS + PADDLE_SIZE.x) * 0.5);
+    new_x = new_x.max(LEFT_WALL + (WALL_THICKNESS + PADDLE_SIZE.x) * 0.5);
+
     paddle_transform.translation.x = new_x;
 }
 
@@ -211,5 +228,42 @@ fn apply_velocity(mut query: Query<(&mut Transform, &Velocity)>, time_step: Res<
     for (mut transform, velocity) in &mut query {
         transform.translation.x += velocity.x * dt;
         transform.translation.y += velocity.y * dt;
+    }
+}
+
+fn check_ball_collision(
+    mut ball_query: Query<(&mut Velocity, &Transform, &Ball)>,
+    collider_query: Query<(&Transform, &Collider)>,
+) {
+    for (mut ball_velocity, ball_transform, ball) in &mut ball_query {
+        for (transform, other) in &collider_query {
+            let collision = collide(
+                ball_transform.translation,
+                ball.size,
+                transform.translation,
+                other.size,
+            );
+
+            // Reflect the ball with the same velocity.
+            let mut reflect_x: bool = false;
+            let mut reflect_y: bool = false;
+
+            if let Some(collision) = collision {
+                match collision {
+                    Collision::Left => reflect_x = ball_velocity.x > 0.0,
+                    Collision::Right => reflect_x = ball_velocity.x < 0.0,
+                    Collision::Top => reflect_y = ball_velocity.y < 0.0,
+                    Collision::Bottom => reflect_y = ball_velocity.y > 0.0,
+                    Collision::Inside => { /* DO NOTHING*/ }
+                }
+            }
+
+            if reflect_x {
+                ball_velocity.x *= -1.0;
+            }
+            if reflect_y {
+                ball_velocity.y *= -1.0;
+            }
+        }
     }
 }

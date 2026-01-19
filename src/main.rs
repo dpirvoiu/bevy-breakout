@@ -4,7 +4,7 @@ use bevy::sprite::collide_aabb::collide;
 use bevy::{prelude::*, time};
 
 // PADDLE
-const PADDLE_START_Y: f32 = 0.0;
+const PADDLE_START_Y: f32 = BOTTOM_WALL + 60.0;
 const PADDLE_SIZE: Vec2 = Vec2::new(120.0, 20.0);
 const PADDLE_COLOR: Color = Color::rgb(0.3, 0.3, 0.7);
 const PADDLE_SPEED: f32 = 500.0;
@@ -27,6 +27,14 @@ const WALL_THICKNESS: f32 = 10.0;
 const WALL_BLOCK_WIDTH: f32 = RIGHT_WALL - LEFT_WALL;
 const WALL_BLOCK_HEGIHT: f32 = TOP_WALL - BOTTOM_WALL;
 const WALL_COLOR: Color = Color::rgb(0.8, 0.8, 0.8);
+
+// Bricks
+const BRICK_SIZE: Vec2 = Vec2::new(100.0, 30.0);
+const BRICK_COLOR: Color = Color::rgb(0.5, 0.5, 1.0);
+const GAP_BETWEEN_PADDLE_AND_BRICKS: f32 = 270.0;
+const GAP_BETWEEN_BRICKS: f32 = 5.0;
+const GAP_BETWEEN_BRICKS_AND_CEILING: f32 = 20.0;
+const GAP_BETWEEN_BRICKS_AND_SIDES: f32 = 20.0;
 
 fn main() {
     App::new()
@@ -62,6 +70,9 @@ struct Velocity(Vec2);
 struct Collider {
     size: Vec2,
 }
+
+#[derive(Component)]
+struct Brick;
 
 // Wall components
 #[derive(Bundle)]
@@ -195,6 +206,46 @@ fn setup(mut commands: Commands, asset_server: Res<AssetServer>) {
             },
         });
     }
+
+    // BRICKS
+    {
+        let offset_x = LEFT_WALL + GAP_BETWEEN_BRICKS_AND_SIDES + BRICK_SIZE.x * 0.5;
+        let offset_y = BOTTOM_WALL + GAP_BETWEEN_PADDLE_AND_BRICKS + BRICK_SIZE.x * 0.5;
+
+        let brick_total_width = (RIGHT_WALL - LEFT_WALL) - 2.0 * GAP_BETWEEN_BRICKS_AND_SIDES;
+        let brick_total_height = (TOP_WALL - BOTTOM_WALL)
+            - GAP_BETWEEN_BRICKS_AND_CEILING
+            - GAP_BETWEEN_PADDLE_AND_BRICKS;
+
+        let rows = (brick_total_height / (BRICK_SIZE.y + GAP_BETWEEN_BRICKS)).floor() as i32;
+        let columns = (brick_total_width / (BRICK_SIZE.x + GAP_BETWEEN_BRICKS)).floor() as i32;
+
+        for row in 0..rows {
+            for column in 0..columns {
+                let brick_pos = vec2(
+                    offset_x + column as f32 * (BRICK_SIZE.x + GAP_BETWEEN_BRICKS),
+                    offset_y + row as f32 * (BRICK_SIZE.y + GAP_BETWEEN_BRICKS),
+                );
+
+                commands.spawn((
+                    SpriteBundle {
+                        transform: Transform {
+                            translation: brick_pos.extend(0.0),
+                            ..Default::default()
+                        },
+                        sprite: Sprite {
+                            color: BRICK_COLOR,
+                            custom_size: Some(BRICK_SIZE),
+                            ..Default::default()
+                        },
+                        ..Default::default()
+                    },
+                    Brick,
+                    Collider { size: BRICK_SIZE },
+                ));
+            }
+        }
+    }
 }
 
 fn move_paddle(
@@ -232,11 +283,12 @@ fn apply_velocity(mut query: Query<(&mut Transform, &Velocity)>, time_step: Res<
 }
 
 fn check_ball_collision(
+    mut commands: Commands,
     mut ball_query: Query<(&mut Velocity, &Transform, &Ball)>,
-    collider_query: Query<(&Transform, &Collider)>,
+    collider_query: Query<(Entity, &Transform, &Collider, Option<&Brick>)>,
 ) {
     for (mut ball_velocity, ball_transform, ball) in &mut ball_query {
-        for (transform, other) in &collider_query {
+        for (other_entity, transform, other, opt_brick) in &collider_query {
             let collision = collide(
                 ball_transform.translation,
                 ball.size,
@@ -256,13 +308,17 @@ fn check_ball_collision(
                     Collision::Bottom => reflect_y = ball_velocity.y > 0.0,
                     Collision::Inside => { /* DO NOTHING*/ }
                 }
-            }
 
-            if reflect_x {
-                ball_velocity.x *= -1.0;
-            }
-            if reflect_y {
-                ball_velocity.y *= -1.0;
+                if reflect_x {
+                    ball_velocity.x *= -1.0;
+                }
+                if reflect_y {
+                    ball_velocity.y *= -1.0;
+                }
+
+                if opt_brick.is_some() {
+                    commands.entity(other_entity).despawn();
+                }
             }
         }
     }

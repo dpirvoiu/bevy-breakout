@@ -1,4 +1,4 @@
-use bevy::math::vec3;
+use bevy::math::{vec2, vec3};
 use bevy::{prelude::*, time};
 
 // PADDLE
@@ -8,12 +8,23 @@ const PADDLE_COLOR: Color = Color::rgb(0.3, 0.3, 0.7);
 const PADDLE_SPEED: f32 = 500.0;
 
 // BALL
-
 const BALL_COLOR: Color = Color::rgb(1.0, 0.5, 0.5);
 const BALL_STARTING_POSITION: Vec3 = Vec3::new(0.0, -5.0, 1.0);
 const BALL_SIZE: Vec2 = Vec2::new(30.0, 30.0);
 const BALL_SPEED: f32 = 400.0;
 const BALL_INITIAL_DIRECTION: Vec2 = Vec2::new(0.5, -0.5);
+
+// Wall -> Confine the ball
+const LEFT_WALL: f32 = -450.0;
+const RIGHT_WALL: f32 = 450.0;
+const BOTTOM_WALL: f32 = -300.0;
+const TOP_WALL: f32 = 300.0;
+
+// Wall Properties
+const WALL_THICKNESS: f32 = 10.0;
+const WALL_BLOCK_WIDTH: f32 = RIGHT_WALL - LEFT_WALL;
+const WALL_BLOCK_HEGIHT: f32 = TOP_WALL - BOTTOM_WALL;
+const WALL_COLOR: Color = Color::rgb(0.8, 0.8, 0.8);
 
 fn main() {
     App::new()
@@ -35,6 +46,18 @@ struct Ball;
 
 #[derive(Component, Deref, DerefMut)]
 struct Velocity(Vec2);
+
+#[derive(Component)]
+struct Collider {
+    size: Vec2,
+}
+
+// Wall components
+#[derive(Bundle)]
+struct WallBundle {
+    sprite_bundle: SpriteBundle,
+    collider: Collider,
+}
 
 fn setup(mut commands: Commands, asset_server: Res<AssetServer>) {
     // camera
@@ -78,6 +101,88 @@ fn setup(mut commands: Commands, asset_server: Res<AssetServer>) {
         Ball,
         Velocity(BALL_SPEED * BALL_INITIAL_DIRECTION),
     ));
+
+    // Walls, this is a scope. we use scopes for large amounts of code
+    {
+        let vertical_wall_size = vec2(WALL_THICKNESS, WALL_BLOCK_HEGIHT + WALL_THICKNESS);
+        let horizontal_wall_size = vec2(WALL_BLOCK_WIDTH + WALL_THICKNESS, WALL_THICKNESS);
+
+        // LEFT WALL
+        commands.spawn(WallBundle {
+            sprite_bundle: SpriteBundle {
+                transform: Transform {
+                    translation: vec3(LEFT_WALL, 0.0, 0.0),
+                    ..Default::default()
+                },
+                sprite: Sprite {
+                    color: WALL_COLOR,
+                    custom_size: Some(vertical_wall_size),
+                    ..Default::default()
+                },
+                ..Default::default()
+            },
+            collider: Collider {
+                size: vertical_wall_size,
+            },
+        });
+
+        // RIGHT WALl
+        commands.spawn(WallBundle {
+            sprite_bundle: SpriteBundle {
+                transform: Transform {
+                    translation: vec3(RIGHT_WALL, 0.0, 0.0),
+                    ..Default::default()
+                },
+                sprite: Sprite {
+                    color: WALL_COLOR,
+                    custom_size: Some(vertical_wall_size),
+                    ..Default::default()
+                },
+                ..Default::default()
+            },
+            collider: Collider {
+                size: vertical_wall_size,
+            },
+        });
+
+        // BOTTOm WALl
+        commands.spawn(WallBundle {
+            sprite_bundle: SpriteBundle {
+                transform: Transform {
+                    translation: vec3(0.0, BOTTOM_WALL, 0.0),
+                    ..Default::default()
+                },
+                sprite: Sprite {
+                    color: WALL_COLOR,
+                    custom_size: Some(horizontal_wall_size),
+                    ..Default::default()
+                },
+                ..Default::default()
+            },
+            collider: Collider {
+                size: horizontal_wall_size,
+            },
+        });
+
+        // TOP WALL
+        commands.spawn(WallBundle {
+            sprite_bundle: SpriteBundle {
+                transform: Transform {
+                    translation: vec3(0.0, TOP_WALL, 0.0),
+                    ..Default::default()
+                },
+                sprite: Sprite {
+                    color: WALL_COLOR,
+                    custom_size: Some(horizontal_wall_size),
+                    ..Default::default()
+                },
+                ..Default::default()
+            },
+            collider: Collider {
+                size: horizontal_wall_size,
+            },
+        });
+    }
 }
 
 fn move_paddle(
